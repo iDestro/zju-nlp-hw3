@@ -119,6 +119,7 @@ def test(loader, model, is_validation=False):
             total += torch.sum(data.test_mask).item()
     return correct / total
 
+
 def main():
     args = arg_parse()
 
@@ -128,6 +129,8 @@ def main():
     elif args.dataset == 'cora':
         dataset = Planetoid(root='/tmp/Cora', name='Cora')
         task = 'node'
+
+    print(dataset.data)
     train(dataset, task, args) 
 
 

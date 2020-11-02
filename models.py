@@ -50,7 +50,7 @@ class GNNStack(torch.nn.Module):
 
         # x = None # TODO
         for i in range(self.num_layers):
-            x = self.convs[i](edge_index, x)
+            x = self.convs[i](x, edge_index)
             x = F.relu(x)
             x = F.dropout(x, p=self.dropout, training=self.training)
         if self.task == 'graph':
