@@ -4,6 +4,7 @@ import torch.nn.functional as F
 
 import torch_geometric.nn as pyg_nn
 import torch_geometric.utils as pyg_utils
+from torch_geometric.utils import add_self_loops, remove_self_loops
 
 
 class GNNStack(torch.nn.Module):
@@ -149,7 +150,7 @@ class GAT(pyg_nn.MessagePassing):
         # Remember that the shape of the output depends the number of heads.
         # Our implementation is ~1 line, but don't worry if you deviate from this.
 
-        self.lin = torch.nn.Linear(in_channels, out_channels)
+        self.lin = torch.nn.Linear(in_channels, out_channels * num_heads)
 
         ############################################################################
 
@@ -160,7 +161,7 @@ class GAT(pyg_nn.MessagePassing):
         # mechanism here. Remember to consider number of heads for dimension!
         # Our implementation is ~1 line, but don't worry if you deviate from this.
 
-        self.att = nn.Parameter(torch.Tensor(1, self.out_channels * num_heads))
+        self.att = nn.Parameter(torch.Tensor(1, self.heads, self.out_channels*2))
 
         ############################################################################
 
@@ -182,7 +183,9 @@ class GAT(pyg_nn.MessagePassing):
         # Apply your linear transformation to the node feature matrix before starting
         # to propagate messages.
         # Our implementation is ~1 line, but don't worry if you deviate from this.
-        
+        if size is None and torch.is_tensor(x):
+            edge_index, _ = remove_self_loops(edge_index)
+            edge_index, _ = add_self_loops(edge_index, num_nodes=x.size(0))
         x = self.lin(x)
         ############################################################################
 
@@ -199,9 +202,11 @@ class GAT(pyg_nn.MessagePassing):
         # Our implementation is ~5 lines, but don't worry if you deviate from this.
         x_i = x_i.view(-1, self.heads, self.out_channels)
         x_j = x_j.view(-1, self.heads, self.out_channels)
+        print(x_i.size())
+        print(x_j.size())
         alpha = (torch.cat([x_i, x_j], dim=-1) * self.att).sum(dim=-1)
         alpha = F.leaky_relu(alpha, 0.2)
-        alpha = pyg_utils.softmax(alpha, edge_index_i, size_i)
+        alpha = pyg_utils.softmax(alpha, edge_index_i, torch.LongTensor([size_i]))
 
         ############################################################################
 
