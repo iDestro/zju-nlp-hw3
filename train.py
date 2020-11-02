@@ -50,6 +50,7 @@ def arg_parse():
 
     return parser.parse_args()
 
+
 def train(dataset, task, args):
     if task == 'graph':
         # graph classification: separate dataloader for test set
@@ -91,6 +92,7 @@ def train(dataset, task, args):
             test_acc = test(loader, model)
             print(test_acc,   '  test')
 
+
 def test(loader, model, is_validation=False):
     model.eval()
 
@@ -127,6 +129,7 @@ def main():
         dataset = Planetoid(root='/tmp/Cora', name='Cora')
         task = 'node'
     train(dataset, task, args) 
+
 
 if __name__ == '__main__':
     main()
