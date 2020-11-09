@@ -71,86 +71,45 @@ class GraphSage(pyg_nn.MessagePassing):
     def __init__(self, in_channels, out_channels, reducer='mean', 
                  normalize_embedding=True):
         super(GraphSage, self).__init__(aggr='mean')
-
-        ############################################################################
-        # TODO: Your code here! 
-        # Define the layers needed for the forward function. 
-        # Our implementation is ~2 lines, but don't worry if you deviate from this.
-
-        self.lin = torch.nn.Linear(in_channels, out_channels)  # TODO
+        self.lin = torch.nn.Linear(in_channels*2, out_channels, bias=True)
         self.agg_lin = F.normalize
-
-        ############################################################################
 
         if normalize_embedding:
             self.normalize_emb = True
 
     def forward(self, x, edge_index):
-        num_nodes = x.size(0)
-        # x has shape [N, in_channels]
-        # edge_index has shape [2, E]
+        return self.propagate(edge_index, x=x)
 
-        ############################################################################
-        # TODO: Your code here! 
-        # Given x, perform the aggregation and pass it through a MLP with skip-
-        # connection. Place the result in out. 
-        # HINT: It may be useful to read the pyg_nn implementation of GCNConv,
-        # https://pytorch-geometric.readthedocs.io/en/latest/notes/create_gnn.html
-        # Our implementation is ~4 lines, but don't worry if you deviate from this.
-        # edge_index, _ = add_self_loops(edge_index=edge_index, num_nodes=num_nodes)
-        # out = self.lin(x)  # TODO
-        out = x
-
-        ############################################################################
-
-        return self.propagate(edge_index, size=(num_nodes, num_nodes), x=out)
-
-    def message(self, x_j, edge_index, size):
-        # x_j has shape [E, out_channels]
-
-        # row, col = edge_index
-        # deg = pyg_utils.degree(row, size[0], dtype=x_j.dtype)
-        # deg_inv_sqrt = deg.pow(-0.5)
-        # norm = deg_inv_sqrt[row] * deg_inv_sqrt[col]
-
-        # return norm.view(-1, 1) * x_j
-
+    def message(self, x_j):
         return x_j
 
     def update(self, aggr_out, x):
-        ############################################################################
-        # TODO: Your code here! Perform the update step here. 
-        # Our implementation is ~1 line, but don't worry if you deviate from this.
-
         aggr_out = torch.cat([aggr_out, x], dim=1)
         aggr_out = F.relu(self.lin(aggr_out))
         if self.normalize_emb:
-            aggr_out = self.agg_lin(aggr_out, p=2, dim=1)  # TODO
-
-        ############################################################################
-
+            aggr_out = self.agg_lin(aggr_out, p=2, dim=1)
         return aggr_out
 
 
 class GAT(pyg_nn.MessagePassing):
 
-    def __init__(self, in_channels, out_channels, num_heads=1, concat=True,
+    def __init__(self, in_channels, out_channels, num_heads=3, concat=False,
                  dropout=0, bias=True, **kwargs):
         super(GAT, self).__init__(aggr='add', **kwargs)
 
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.heads = num_heads
-        self.concat = concat 
+        self.concat = concat
         self.dropout = dropout
 
         ############################################################################
         #  TODO: Your code here!
-        # Define the layers needed for the forward function. 
+        # Define the layers needed for the forward function.
         # Remember that the shape of the output depends the number of heads.
         # Our implementation is ~1 line, but don't worry if you deviate from this.
 
-        self.lin = torch.nn.Linear(in_channels, out_channels * num_heads)
+        self.lin = torch.nn.Linear(in_channels, out_channels*self.heads, bias=True)
 
         ############################################################################
 
@@ -161,7 +120,7 @@ class GAT(pyg_nn.MessagePassing):
         # mechanism here. Remember to consider number of heads for dimension!
         # Our implementation is ~1 line, but don't worry if you deviate from this.
 
-        self.att = nn.Parameter(torch.Tensor(1, self.heads, self.out_channels*2))
+        self.att = torch.nn.Parameter(torch.Tensor(1, self.heads, self.out_channels * 2))
 
         ############################################################################
 
@@ -183,9 +142,6 @@ class GAT(pyg_nn.MessagePassing):
         # Apply your linear transformation to the node feature matrix before starting
         # to propagate messages.
         # Our implementation is ~1 line, but don't worry if you deviate from this.
-        if size is None and torch.is_tensor(x):
-            edge_index, _ = remove_self_loops(edge_index)
-            edge_index, _ = add_self_loops(edge_index, num_nodes=x.size(0))
         x = self.lin(x)
         ############################################################################
 
@@ -197,30 +153,27 @@ class GAT(pyg_nn.MessagePassing):
 
         ############################################################################
         #  TODO: Your code here! Compute the attention coefficients alpha as described
-        # in equation (7). Remember to be careful of the number of heads with 
+        # in equation (7). Remember to be careful of the number of heads with
         # dimension!
         # Our implementation is ~5 lines, but don't worry if you deviate from this.
         x_i = x_i.view(-1, self.heads, self.out_channels)
         x_j = x_j.view(-1, self.heads, self.out_channels)
-        print(x_i.size())
-        print(x_j.size())
-        alpha = (torch.cat([x_i, x_j], dim=-1) * self.att).sum(dim=-1)
+        x = torch.cat([x_i, x_j], dim=-1)
+        alpha = (x * self.att).sum(dim=-1)
         alpha = F.leaky_relu(alpha, 0.2)
-        alpha = pyg_utils.softmax(alpha, edge_index_i, torch.LongTensor([size_i]))
-
+        alpha = pyg_utils.softmax(src=alpha, index=edge_index_i, num_nodes=size_i)
         ############################################################################
 
         alpha = F.dropout(alpha, p=self.dropout, training=self.training)
-
-        return x_j * alpha.view(-1, self.heads, 1)
+        out = x_j * alpha.view(-1, self.heads, 1)
+        if self.concat is True:
+            out = out.view(-1, self.heads * self.out_channels)
+        else:
+            out = out.mean(dim=1)
+        return out
 
     def update(self, aggr_out):
         # Updates node embedings.
-        if self.concat is True:
-            aggr_out = aggr_out.view(-1, self.heads * self.out_channels)
-        else:
-            aggr_out = aggr_out.mean(dim=1)
-
         if self.bias is not None:
             aggr_out = aggr_out + self.bias
         return aggr_out

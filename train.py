@@ -26,14 +26,14 @@ def arg_parse():
     parser.add_argument('--dataset', type=str,
                         help='Dataset')
 
-    parser.set_defaults(model_type='GraphSage',
+    parser.set_defaults(model_type='GAT',
                         dataset='cora',
                         num_layers=2,
                         batch_size=32,
                         hidden_dim=32,
                         dropout=0.0,
                         epochs=200,
-                        opt='adam',   # opt_parser
+                        opt='adam',
                         opt_scheduler='none',
                         weight_decay=0.0,
                         lr=0.01)
