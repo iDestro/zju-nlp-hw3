@@ -1,6 +1,5 @@
 import argparse
 import torch
-from torch_geometric.datasets import TUDataset
 from torch_geometric.datasets import Planetoid
 from torch_geometric.data import DataLoader
 import models
@@ -29,9 +28,9 @@ def arg_parse():
     parser.set_defaults(model_type='GAT',
                         dataset='cora',
                         num_layers=2,
-                        batch_size=32,
+                        batch_size=64,
                         hidden_dim=32,
-                        dropout=0.0,
+                        dropout=0.5,
                         epochs=200,
                         opt='adam',
                         opt_scheduler='none',
@@ -51,7 +50,7 @@ def train(dataset, task, args):
                 dataset[int(data_size * 0.8):], batch_size=args.batch_size, shuffle=True)
     elif task == 'node':
         # use mask to split train/validation/test
-        test_loader = loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
+        loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
     else:
         raise RuntimeError('Unknown task')
 
@@ -60,6 +59,7 @@ def train(dataset, task, args):
                             args, task=task)
     scheduler, opt = utils.build_optimizer(args, model.parameters())
 
+    best_acc = 0
     # train
     for epoch in range(args.epochs):
         total_loss = 0
@@ -76,11 +76,14 @@ def train(dataset, task, args):
             opt.step()
             total_loss += loss.item() * batch.num_graphs
         total_loss /= len(loader.dataset)
-        print(total_loss)
 
         if epoch % 10 == 0:
             test_acc = test(loader, model)
-            print(test_acc,   '  test')
+            # print(test_acc,   '  test')
+            best_acc = max(best_acc, test_acc)
+
+    # print("best acc: ", best_acc)
+    return best_acc
 
 
 def test(loader, model, is_validation=False):
@@ -110,18 +113,19 @@ def test(loader, model, is_validation=False):
     return correct / total
 
 
-def main():
+def main(dataset, model):
     args = arg_parse()
-
-    if args.dataset == 'enzymes':
-        dataset = TUDataset(root='/tmp/ENZYMES', name='ENZYMES')
-        task = 'graph'
-    elif args.dataset == 'cora':
-        dataset = Planetoid(root='/tmp/Cora', name='Cora')
+    args.dataset = dataset
+    args.model_type = model
+    if args.dataset == 'cora':
+        dataset = Planetoid(root='/tmp/Cora', name='Cora', split='random', num_train_per_class=77)
         task = 'node'
-
-    print(dataset.data)
-    train(dataset, task, args) 
+    elif args.dataset == 'citeseer':
+        dataset = Planetoid(root='/tmp/CiteSeer', name='CiteSeer', split='random', num_train_per_class=111)
+        task = 'node'
+    # print(dataset.data)
+    # print(dataset.num_classes)
+    return train(dataset, task, args)
 
 
 if __name__ == '__main__':

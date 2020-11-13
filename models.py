@@ -8,6 +8,7 @@ from torch_geometric.utils import add_self_loops, remove_self_loops
 
 
 class GNNStack(torch.nn.Module):
+
     def __init__(self, input_dim, hidden_dim, output_dim, args, task='node'):
         super(GNNStack, self).__init__()
         conv_model = self.build_conv_model(args.model_type)
@@ -93,12 +94,12 @@ class GraphSage(pyg_nn.MessagePassing):
 
 class GAT(pyg_nn.MessagePassing):
 
-    def __init__(self, in_channels, out_channels, num_heads=3, concat=False,
+    def __init__(self, in_channels, out_channels, num_heads=8, concat=True,
                  dropout=0, bias=True, **kwargs):
         super(GAT, self).__init__(aggr='add', **kwargs)
 
         self.in_channels = in_channels
-        self.out_channels = out_channels
+        self.out_channels = out_channels // num_heads
         self.heads = num_heads
         self.concat = concat
         self.dropout = dropout
@@ -109,7 +110,7 @@ class GAT(pyg_nn.MessagePassing):
         # Remember that the shape of the output depends the number of heads.
         # Our implementation is ~1 line, but don't worry if you deviate from this.
 
-        self.lin = torch.nn.Linear(in_channels, out_channels*self.heads, bias=True)
+        self.lin = torch.nn.Linear(in_channels, self.out_channels*self.heads, bias=True)
 
         ############################################################################
 
@@ -125,9 +126,9 @@ class GAT(pyg_nn.MessagePassing):
         ############################################################################
 
         if bias and concat:
-            self.bias = nn.Parameter(torch.Tensor(self.heads * out_channels))
+            self.bias = nn.Parameter(torch.Tensor(self.heads * self.out_channels))
         elif bias and not concat:
-            self.bias = nn.Parameter(torch.Tensor(out_channels))
+            self.bias = nn.Parameter(torch.Tensor(self.out_channels))
         else:
             self.register_parameter('bias', None)
 
